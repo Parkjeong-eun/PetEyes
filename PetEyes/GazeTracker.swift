@@ -25,6 +25,8 @@ final class GazeTracker {
     private(set) var faceWidth: CGFloat = 0
     /// 마지막으로 인식한 가리키기 (HUD용)
     private(set) var lastPointing: Pointing?
+    /// 마지막 프레임에 적용된 카메라 시차 보정량 (-1...1 단위, HUD용)
+    private(set) var parallaxCorrection: CGPoint = .zero
 
     /// 지금 시선을 결정하는 입력
     var mode: Mode { isPointing ? .pointing : hasFace ? .face : .idle }
@@ -34,7 +36,14 @@ final class GazeTracker {
     // MARK: 튜닝 값 — 실제 기기에 붙여보고 조정 (README 체크리스트 참고)
     /// 카메라 화각 대비 눈 움직임 증폭. 클수록 조금만 움직여도 끝까지 봄
     var gain: CGFloat = 1.8
-    /// 카메라가 화면 정중앙에 있지 않아서 생기는 치우침 보정 (-1...1 단위)
+    /// 카메라 렌즈가 화면 중심(두 눈 사이)에서 얼마나 떨어져 있는지 — 미터, 사용자가 화면을 볼 때 기준 오른쪽 +x, 위쪽 +y.
+    /// 가로 거치 시 카메라는 폰 한쪽 끝에 있어서 화면 중심에서 약 6.5cm 벗어난다.
+    /// 사용자가 화면(눈)을 똑바로 봐도 카메라에는 옆에 있는 것처럼 찍히므로, 거리에 비례해 되돌린다.
+    /// 카메라가 화면 왼쪽이면 x 음수, 오른쪽이면 양수. 반대로 꽂으면 부호를 바꿀 것.
+    var cameraOffset = CGSize(width: -0.065, height: 0)
+    /// 성인 얼굴 실제 폭(미터). 얼굴 박스 폭 → 거리 추정에 쓴다
+    var faceWidthMeters: CGFloat = 0.15
+    /// cameraOffset으로도 남는 치우침을 손으로 잡는 상수 (-1...1 단위). 거치대 구조 등
     var bias = CGPoint(x: 0, y: 0)
     /// 사용자가 오른쪽으로 갔는데 눈이 왼쪽을 보면 true
     var invertX = false
@@ -103,18 +112,23 @@ final class GazeTracker {
 
         // 우선순위: 가리키기 > 얼굴. 둘 다 없으면 gaze는 마지막 값 유지 (뷰가 아이들로 전환)
         let targetPoint: CGPoint?
+        /// 거리 추정용 "얼굴 폭 상당" 값. 손만 보일 때는 손바닥 길이(≈9.5cm)를 얼굴 폭으로 환산
+        let distanceWidth: CGFloat
         if isPointing, let p = lastPointing {
             // 손가락이 가리키는 지점 = 검지 끝에서 방향으로 pointReach만큼 뻗은 곳
             targetPoint = CGPoint(x: p.tip.x + p.direction.dx * pointReach,
                                   y: p.tip.y + p.direction.dy * pointReach)
+            distanceWidth = hasFace ? faceWidth : p.palmLength * (faceWidthMeters / 0.095)
         } else if hasFace, let box = result.face {
             targetPoint = CGPoint(x: box.midX, y: box.midY)
+            distanceWidth = box.width
         } else {
             targetPoint = nil
+            distanceWidth = 0
         }
 
         if let targetPoint {
-            let target = mapToGaze(targetPoint)
+            let target = mapToGaze(targetPoint, distanceWidth: distanceWidth)
             gaze = CGPoint(x: gaze.x + (target.x - gaze.x) * smoothing,
                            y: gaze.y + (target.y - gaze.y) * smoothing)
         }
@@ -157,10 +171,23 @@ final class GazeTracker {
     }
 
     /// Vision 정규화 좌표(0...1, 원점 좌하단) → gaze(-1...1). 얼굴·손 공통.
-    private func mapToGaze(_ p: CGPoint) -> CGPoint {
-        var x = (p.x - 0.5) * 2 + bias.x
-        let y = (p.y - 0.5) * 2 + bias.y
+    ///
+    /// - Parameter distanceWidth: 대상의 얼굴 폭 상당 값(정규화). 카메라 시차 보정의 크기를 정한다.
+    ///
+    /// 시차 보정: 카메라가 화면 중심에서 o(m) 떨어져 있으면, 화면 중심을 보는 사용자가
+    /// 카메라에는 -o 만큼 옆에 찍힌다. 그 각도는 거리 d에 반비례하고, 얼굴 폭 w(정규화)는
+    /// w = W / (2·d·tan(fov/2)) 이므로  보정(-1...1 단위) = o / (d·tan(fov/2)) = 2·o·w / W.
+    private func mapToGaze(_ p: CGPoint, distanceWidth: CGFloat) -> CGPoint {
+        var x = (p.x - 0.5) * 2
+        var y = (p.y - 0.5) * 2
         if invertX { x = -x }
+
+        let k = 2 * distanceWidth / faceWidthMeters
+        let correction = CGPoint(x: cameraOffset.width * k, y: cameraOffset.height * k)
+        parallaxCorrection = correction
+        x += correction.x + bias.x
+        y += correction.y + bias.y
+
         return CGPoint(x: clamp(x * gain), y: clamp(y * gain))
     }
 

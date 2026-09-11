@@ -74,6 +74,9 @@ struct EyesScreen: View {
             }
             Text(String(format: "width %.3f  →  closeness %.2f  →  converge %+.2f",
                         tracker.faceWidth, tracker.closeness, converge))
+            Text(String(format: "camera offset (%+.3f, %+.3f) m  →  parallax fix x %+.2f  y %+.2f",
+                        tracker.cameraOffset.width, tracker.cameraOffset.height,
+                        tracker.parallaxCorrection.x, tracker.parallaxCorrection.y))
             Text(String(format: "range %.2f…%.2f  gain %.1f  smooth %.2f  invertX %@",
                         tracker.closenessRange.lowerBound, tracker.closenessRange.upperBound,
                         tracker.gain, tracker.smoothing, tracker.invertX ? "on" : "off"))
