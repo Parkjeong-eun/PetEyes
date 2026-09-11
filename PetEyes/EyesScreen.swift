@@ -5,9 +5,9 @@
 
 import SwiftUI
 
-/// 검은 전체 화면에 눈 두 개. 얼굴이 보이면 얼굴을, 안 보이면 혼자 두리번거리고, 항상 불규칙하게 깜빡인다.
+/// 검은 전체 화면에 눈 두 개. 손가락이 가리키는 곳 > 얼굴 순으로 쳐다보고, 둘 다 없으면 혼자 두리번거리며, 항상 불규칙하게 깜빡인다.
 struct EyesScreen: View {
-    @State private var tracker = FaceTracker()
+    @State private var tracker = GazeTracker()
     @State private var idleGaze: CGPoint = .zero
     @State private var blink = false
     @State private var showDebug = false
@@ -16,11 +16,12 @@ struct EyesScreen: View {
     /// 얼굴이 가장 가까울 때(closeness 1) 각 눈의 동공이 안쪽으로 이동하는 gaze 단위량
     private let convergeStrength: CGFloat = 0.6
 
-    /// 얼굴이 보이면 얼굴을, 안 보이면 혼자 두리번
-    private var gaze: CGPoint { tracker.hasFace ? tracker.gaze : idleGaze }
+    /// 볼 대상(가리키기 또는 얼굴)이 있으면 그쪽을, 없으면 혼자 두리번
+    private var gaze: CGPoint { tracker.hasTarget ? tracker.gaze : idleGaze }
 
-    /// 가까이 오면 두 눈이 안쪽으로 모임 → "나를 보고 있다" 느낌이 강해짐
-    private var converge: CGFloat { tracker.hasFace ? tracker.closeness * convergeStrength : 0 }
+    /// 가까이 오면 두 눈이 안쪽으로 모임 → "나를 보고 있다" 느낌이 강해짐.
+    /// 가리키는 곳을 볼 때는 먼 곳이니 모이지 않는다.
+    private var converge: CGFloat { tracker.mode == .face ? tracker.closeness * convergeStrength : 0 }
 
     private var leftGaze: CGPoint { CGPoint(x: gaze.x + converge, y: gaze.y) }
     private var rightGaze: CGPoint { CGPoint(x: gaze.x - converge, y: gaze.y) }
@@ -65,8 +66,12 @@ struct EyesScreen: View {
     /// 실기기 튜닝용. README 체크리스트의 invertX / bias / gain / closenessRange를 맞출 때 본다.
     private var debugHUD: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(tracker.hasFace ? "face: YES" : "face: no (idle)")
+            Text("mode: \(tracker.mode.rawValue)   face \(tracker.hasFace ? "Y" : "-")   pointing \(tracker.isPointing ? "Y" : "-")")
             Text(String(format: "gaze  x %+.2f  y %+.2f", gaze.x, gaze.y))
+            if let p = tracker.lastPointing {
+                Text(String(format: "finger tip (%.2f, %.2f)  dir (%+.2f, %+.2f)  reach %.2f",
+                            p.tip.x, p.tip.y, p.direction.dx, p.direction.dy, tracker.pointReach))
+            }
             Text(String(format: "width %.3f  →  closeness %.2f  →  converge %+.2f",
                         tracker.faceWidth, tracker.closeness, converge))
             Text(String(format: "range %.2f…%.2f  gain %.1f  smooth %.2f  invertX %@",
@@ -86,7 +91,7 @@ struct EyesScreen: View {
     private func idleLoop() async {
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(Double.random(in: 1.0...3.0)))
-            guard !tracker.hasFace else { continue }
+            guard !tracker.hasTarget else { continue }
             idleGaze = Bool.random()
                 ? .zero
                 : CGPoint(x: .random(in: -0.8...0.8), y: .random(in: -0.5...0.5))

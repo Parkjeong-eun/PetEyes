@@ -18,6 +18,8 @@ import SwiftUI
 struct EyeView: View {
     var gaze: CGPoint
     var size: CGFloat = 160
+    /// 남색 원 안의 진짜 동공 지름 (남색 원 지름 대비). 감정 표현 시 확대/축소용
+    var pupilSize: CGFloat = 0.68
 
     var body: some View {
         let d = size
@@ -52,11 +54,17 @@ struct EyeView: View {
                                      startPoint: .top, endPoint: .bottom))
                 .frame(width: ring, height: ring)
 
-            // 남색 동공
+            // 남색 원 (홍채 안쪽)
             Circle()
                 .fill(LinearGradient(colors: [Color(hex: 0x13070F), Color(hex: 0x1B1D50), Color(hex: 0x2C3698)],
                                      startPoint: .top, endPoint: .bottom))
                 .frame(width: p, height: p)
+
+            // 진짜 동공 — 더 어두운 원, 가장자리는 살짝 부드럽게
+            Circle()
+                .fill(Color(hex: 0x0C0926))
+                .frame(width: p * pupilSize, height: p * pupilSize)
+                .blur(radius: p * 0.012)
 
             // 3) 반사광 — 홍채와 반대로 조금 밀어서 '제자리에 있는 것처럼' 보이게
             highlights(p: p)
