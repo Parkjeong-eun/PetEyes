@@ -11,7 +11,11 @@ import SwiftUI
 struct PetEyesApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            EyesScreen()
+                .statusBarHidden()
+                .persistentSystemOverlays(.hidden)
+                // 기기에 꽂아두고 오래 켜두는 용도 → 화면 자동 꺼짐 방지
+                .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
         }
     }
 }
