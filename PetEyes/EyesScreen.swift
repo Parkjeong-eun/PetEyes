@@ -36,7 +36,7 @@ struct EyesScreen: View {
                 HStack(spacing: eyeSize * 0.22) {
                     EyeView(gaze: leftGaze, size: eyeSize)
                         .animation(spring, value: leftGaze)
-                    EyeView(gaze: rightGaze, size: eyeSize)
+                    EyeView(gaze: rightGaze, size: eyeSize, mirrored: true)
                         .animation(spring, value: rightGaze)
                 }
                 .scaleEffect(x: 1, y: blink ? 0.06 : 1)
